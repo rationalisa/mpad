@@ -1,6 +1,7 @@
 import time
 import argparse
 import numpy as np
+from nltk import word_tokenize
 from sklearn.model_selection import KFold
 from sklearn.preprocessing import LabelEncoder
 from math import ceil
@@ -11,7 +12,7 @@ import torch.optim as optim
 from torch.autograd import Variable
 from torch.optim.lr_scheduler import StepLR
 
-from utils import load_file, preprocessing, get_vocab, load_embeddings, create_gows, accuracy, generate_batches, AverageMeter
+from utils import *
 from models import MPAD
 
 # Training settings
@@ -51,8 +52,8 @@ args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 
 # Read data
-docs, class_labels = load_file(args.path_to_dataset)
-docs = preprocessing(docs)
+docs, class_labels, test_docs = load_file(args.path_to_dataset)
+#docs = preprocessing(docs)
 
 enc = LabelEncoder()
 class_labels = enc.fit_transform(class_labels)
@@ -64,9 +65,15 @@ for i in range(len(class_labels)):
     t[0] = class_labels[i]
     y.append(t)
 
-vocab = get_vocab(docs)
-embeddings = load_embeddings(args.path_to_embeddings, vocab)
-adj, features, _ = create_gows(docs, vocab, args.window_size, args.directed, args.normalize, args.use_master_node)
+# vocab = get_vocab(docs)
+# embeddings = load_embeddings(args.path_to_embeddings, vocab)
+tagged_data = [word_tokenize(_d) for i, _d in enumerate(docs)]
+word_counts, vocabulary, vocabulary_inv = get_vocab(tagged_data)
+inp_data = [[vocabulary[word] for word in text] for text in tagged_data]
+embeddings = get_embeddings(inp_data, vocabulary_inv)
+
+
+adj, features, _ = create_gows(tagged_data, vocabulary, args.window_size, args.directed, args.normalize, args.use_master_node)
 
 kf = KFold(n_splits=10, shuffle=True)
 it = 0

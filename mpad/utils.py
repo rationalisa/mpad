@@ -6,8 +6,44 @@ from scipy.sparse import csr_matrix, lil_matrix
 import torch
 from gensim.models.keyedvectors import KeyedVectors
 
+import pickle
+import pandas as pd
+import itertools
+from collections import Counter
+from nltk.corpus import stopwords
+from gensim.models import word2vec
+from sklearn.linear_model import LogisticRegression
+import os
+import string
+import nltk
+import ssl
+
+try:
+    _create_unverified_https_context = ssl._create_unverified_context
+except AttributeError:
+    pass
+else:
+    ssl._create_default_https_context = _create_unverified_https_context
+
+nltk.download('stopwords')
+nltk.download('punkt')
+
+def preprocess_df(df):
+    stop_words = set(stopwords.words('english'))
+    stop_words.add('would')
+    translator = str.maketrans(string.punctuation, ' ' * len(string.punctuation))
+    preprocessed_sentences = []
+    for i, row in df.iterrows():
+        sent = row["text"]
+        sent_nopuncts = sent.translate(translator)
+        words_list = sent_nopuncts.strip().split()
+        filtered_words = [word for word in words_list if word not in stop_words and len(word) != 1]
+        preprocessed_sentences.append(" ".join(filtered_words))
+    df["text"] = preprocessed_sentences
+    return df
 
 def load_file(filename):
+    '''
     labels = []
     docs =[]
 
@@ -18,6 +54,18 @@ def load_file(filename):
             docs.append(content[1][:-1])
     
     return docs,labels  
+    '''
+    data_path = "/Users/zhangliji/Documents/GitHub/291A/Challenge/"
+
+    df_train = pd.read_csv(data_path + "train.csv")
+    df_test = pd.read_csv(data_path + "test.csv")
+
+    df_train["text"] = df_train["review"]
+    df_test["text"] = df_test["review"]
+    df_train = preprocess_df(df_train)
+    df_test = preprocess_df(df_test)
+    
+    return df_train['text'], df_train['label'], df_test['text']
 
   
 def load_embeddings(fname, vocab):
@@ -33,6 +81,45 @@ def load_embeddings(fname, vocab):
     print("Existing vectors:", len(vocab)-len(unknown_words))
     return word_vecs
 
+def get_embeddings(inp_data, vocabulary_inv, size_features=100,
+                   mode='skipgram',
+                   min_word_count=2,
+                   context=5):
+    model_name = "embedding"
+    path = "/Users/zhangliji/Documents/GitHub/291A/Challenge/"
+    model_name = os.path.join(path, model_name)
+    if os.path.exists(model_name):
+        embedding_model = Word2Vec.load(model_name)
+        print("Loading Word2Vec model {}".format(model_name))
+    else:
+        num_workers = 15  # Number of threads to run in parallel
+        downsampling = 1e-3  # Downsample setting for frequent words
+        print('Training Word2Vec model...')
+        sentences = [[vocabulary_inv[w] for w in s] for s in inp_data]
+        if mode == 'skipgram':
+            sg = 1
+            print('Model: skip-gram')
+        elif mode == 'cbow':
+            sg = 0
+            print('Model: CBOW')
+        embedding_model = word2vec.Word2Vec(sentences, workers=num_workers,
+                                            sg=sg,
+                                            size=size_features,
+                                            min_count=min_word_count,
+                                            window=context,
+                                            sample=downsampling)
+        embedding_model.init_sims(replace=True)
+        embedding_model.save(model_name)
+        print("Saving Word2Vec model {}".format(model_name))
+    embedding_weights = np.zeros((len(vocabulary_inv), size_features))
+    for i in range(len(vocabulary_inv)):
+        word = vocabulary_inv[i]
+        if word in embedding_model:
+            embedding_weights[i] = embedding_model[word]
+        else:
+            embedding_weights[i] = np.random.uniform(-0.25, 0.25,
+                                                     embedding_model.vector_size)
+    return embedding_weights
 
 def clean_str(string):
     string = re.sub(r"[^A-Za-z0-9(),!?\'\`]", " ", string)     
@@ -61,7 +148,8 @@ def preprocessing(docs):
     return preprocessed_docs
     
     
-def get_vocab(docs):
+def get_vocab(sentences):
+    '''
     vocab = dict()
     
     for doc in docs:
@@ -70,8 +158,16 @@ def get_vocab(docs):
                 vocab[word] = len(vocab)+1
 
     print("Vocabulary size: ", len(vocab))
-        
     return vocab
+    '''
+    # Build vocabulary
+    word_counts = Counter(itertools.chain(*sentences))
+    # Mapping from index to word
+    vocabulary_inv = [x[0] for x in word_counts.most_common()]
+    # Mapping from word to index
+    vocabulary = {x: i for i, x in enumerate(vocabulary_inv)}
+    return word_counts, vocabulary, vocabulary_inv
+
 
 
 def create_gows(docs, vocab, window_size, directed, to_normalize, use_master_node):
