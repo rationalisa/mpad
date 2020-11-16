@@ -55,7 +55,7 @@ def load_file(filename):
     
     return docs,labels  
     '''
-    data_path = "/Users/zhangliji/Documents/GitHub/291A/Challenge/"
+    data_path = "./"
 
     df_train = pd.read_csv(data_path + "train.csv")
     df_test = pd.read_csv(data_path + "test.csv")
@@ -86,7 +86,7 @@ def get_embeddings(inp_data, vocabulary_inv, size_features=100,
                    min_word_count=2,
                    context=5):
     model_name = "embedding"
-    path = "/Users/zhangliji/Documents/GitHub/291A/Challenge/"
+    path = "./"
     model_name = os.path.join(path, model_name)
     if os.path.exists(model_name):
         embedding_model = Word2Vec.load(model_name)
